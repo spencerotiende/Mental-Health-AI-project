@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# --- LangChain Imports ---
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -18,19 +17,9 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# ---------------------------------------------------------------
-# 1. Load Environment Variables
-# ---------------------------------------------------------------
-load_dotenv()
-# .env should contain:
-# OPENAI_API_KEY=...
-# LANGCHAIN_API_KEY=...
-# LANGCHAIN_TRACING_V2=true
-# LANGCHAIN_PROJECT=mental-health-app
 
-# ---------------------------------------------------------------
-# 2. FastAPI App
-# ---------------------------------------------------------------
+load_dotenv()
+
 app = FastAPI()
 
 app.add_middleware(
@@ -52,13 +41,9 @@ try:
 except FileNotFoundError:
     print("CRITICAL WARNING: Model file not found. Prediction endpoint will fail.")
 
-# ---------------------------------------------------------------
-# 4. Build RAG Chain
-#    Place your 3 PDFs inside a folder called /docs:
-#      docs/nimh_depression.pdf
-#      docs/cci_dealing_with_depression.pdf
-#      docs/who_mhgap_depression.pdf
-# ---------------------------------------------------------------
+
+#RAG Chain
+
 def build_rag_retriever():
     docs_path = "./docs"
 
@@ -66,12 +51,11 @@ def build_rag_retriever():
         print("WARNING: No PDFs found in ./docs — RAG will not have a knowledge base.")
         return None
 
-    # Load all PDFs
     loader    = DirectoryLoader(docs_path, glob="**/*.pdf", loader_cls=PyPDFLoader)
     documents = loader.load()
     print(f"Loaded {len(documents)} pages from PDFs.")
 
-    # Split into smaller chunks
+    # Split
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=200,
         chunk_overlap=20
@@ -81,7 +65,7 @@ def build_rag_retriever():
 
     embeddings = OpenAIEmbeddings()
 
-    # Use Chroma — persists to disk, memory friendly, no rebuild on restart
+
     chroma_path = "./chroma_db"
 
     if os.path.exists(chroma_path) and os.listdir(chroma_path):
@@ -130,9 +114,9 @@ def build_rag_chain(retriever):
 retriever = build_rag_retriever()
 rag_chain = build_rag_chain(retriever) if retriever else None
 
-# ---------------------------------------------------------------
-# 5. Build Conversational Chain with Memory
-# ---------------------------------------------------------------
+
+#Conversational Chain with Memory
+
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
 
 system_prompt = (
@@ -166,9 +150,7 @@ chain_with_memory = RunnableWithMessageHistory(
     history_messages_key="history"
 )
 
-# ---------------------------------------------------------------
-# 6. ML Prediction Endpoint
-# ---------------------------------------------------------------
+
 class AssessmentInput(BaseModel):
     age: int
     gender: str
@@ -216,19 +198,19 @@ def predict_risk(data: AssessmentInput):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ---------------------------------------------------------------
-# 7. Chat Endpoint — RAG-aware with memory
-# ---------------------------------------------------------------
+
+# Chat Endpoint — RAG-aware with memory
+
 class ChatRequest(BaseModel):
-    session_id: str  # unique ID per user/conversation
-    message: str     # latest message only, memory handles history
+    session_id: str 
+    message: str  
 
 @app.post("/chat/")
 def chat_endpoint(request: ChatRequest):
     try:
         user_message = request.message
 
-        # If RAG is available, retrieve relevant clinical context first
+       
         if rag_chain:
             rag_context = rag_chain.invoke(user_message)
             augmented_message = (
@@ -239,7 +221,7 @@ def chat_endpoint(request: ChatRequest):
         else:
             augmented_message = user_message
 
-        # Run through conversational chain with memory
+     
         response = chain_with_memory.invoke(
             {"input": augmented_message},
             config={"configurable": {"session_id": request.session_id}}
@@ -250,9 +232,7 @@ def chat_endpoint(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ---------------------------------------------------------------
-# 8. Health Check
-# ---------------------------------------------------------------
+
 @app.get("/")
 def root():
     return {
