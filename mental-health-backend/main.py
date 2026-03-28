@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 # 1. Load Environment Variables (Fixes your API Key Error)
 load_dotenv() 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-#print("API KEY:", os.getenv("OPENAI_API_KEY"))
 
 app = FastAPI()
 
